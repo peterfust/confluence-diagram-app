@@ -1,6 +1,6 @@
 # Diagram Format: Semantics and Presentation Separated
 
-Concept and decision record for a Confluence diagram plugin.
+Concept and decision record for a Confluence diagram editor.
 Implementation-neutral: applies to Cloud (Forge) and Data Center alike, independent of
 frontend library and storage location.
 
@@ -17,7 +17,7 @@ A diagram is stored in two independent layers:
 |---|---|---|
 | Contains | nodes, relationships, containment, descriptions | coordinates, size, shape |
 | Role | source of truth | purely derivative, may be missing |
-| Contains numbers | no | yes, exclusively |
+| Numbers | never appear here | the only place they appear |
 
 Positions are **stored, not computed**. There is no auto-layout. Inserting a new node does
 not move any existing node.
@@ -149,8 +149,11 @@ its usual direction with it, and `direction` exists only as an exception.
 | `flow` | something moves: data, messages, documents, process steps | directed |
 | `dependency` | A needs B, A calls B | directed |
 
-`direction` accepts `to`, `none`, `both`. Further types (`trigger`, `is_a`, `publishes`) are
-specific to a diagram `kind` and should only be added once a `kind` is drawn more tightly.
+`direction` accepts `to`, `none`, `both`. There is deliberately no `from`: an edge is reversed
+by swapping `source` and `target`, so arrow direction and field order can never disagree.
+
+Further types (`trigger`, `is_a`, `publishes`) are specific to a diagram `kind` and should
+only be added once a `kind` is drawn more tightly.
 
 ### notes
 
@@ -201,29 +204,42 @@ page) so the separation is physical and Layer 1 can be indexed on its own.
 
 ## 5. Invariants
 
-The validator checks these on every change.
+### Checked by the validator
 
-| | Rule | Consequence if violated |
+I1–I6 are decidable against a single document state. The validator runs them on every load
+and every change. The column says what happens when a violation is **found** — normally in
+hand-edited JSON or after a bad merge, since the editor prevents all six during normal use.
+
+| | Rule | When a violation is found |
 |---|---|---|
-| **I1** | Every `id` is unique within the diagram (nodes, edges and notes share one namespace) | error; repaired on load, see below |
-| **I2** | Anything referenced as `parent` carries `container: true` | error; the editor repairs it automatically |
-| **I3** | Every edge's `source` and `target` exist | error |
-| **I4** | Every note's `anchor` exists | note is deleted along with its anchor |
+| **I1** | Every `id` is unique within the diagram (nodes, edges and notes share one namespace) | repaired: the second occurrence is re-minted, its references follow |
+| **I2** | Anything referenced as `parent` carries `container: true` | repaired: the referenced node gets `container: true` |
+| **I3** | Every edge's `source` and `target` exist | the edge is discarded |
+| **I4** | Every note's `anchor` exists | the note is discarded |
 | **I5** | Every Layer 2 entry has a counterpart in Layer 1 | orphan, discarded |
-| **I6** | `parent` relationships form no cycle | error |
-| **I7** | IDs stay stable when the label is renamed | — |
-| **I8** | `container: true` is a permission ("may hold children"), not a claim ("has children") | — |
+| **I6** | `parent` relationships form no cycle | repaired: the `parent` closing the cycle is dropped, the node becomes a root |
 
-**I1** holds by construction, because the editor is the only thing that mints IDs (§6) and
-checks each new one against the whole namespace. The validator still enforces it, but against
-hand-edited JSON and bad merges rather than against normal use. A duplicate found on load is
-**repaired, not rejected** — the second occurrence is re-minted and its references follow.
-A page that refuses to open because of one duplicate ID is a dead page.
+Repair rather than rejection is the rule throughout: a page that refuses to open because of
+one duplicate ID is a dead page. Every repair is reported to the author, never silent.
 
-**I7** is the most important rule here: once a note anchor, a model or a later external
-reconciliation (§10) refers to an ID, renaming the label must not break that reference.
-Opaque IDs (D13) make this nearly automatic — an ID that visibly means nothing invites nobody
-to "correct" it along with the label.
+I1 in particular holds by construction, because the editor is the only thing that mints IDs
+(§6) and checks each new one against the whole namespace. I3 and I4 never arise in the editor
+either, which deletes an edge together with its endpoint and a note together with its anchor.
+
+### Design statements
+
+I7 and I8 read like invariants but are not checkable at a single point in time — I7 spans two
+states, I8 is a definition. They constrain the editor and the reader, not the validator.
+
+| | Statement |
+|---|---|
+| **I7** | IDs stay stable when the label is renamed |
+| **I8** | `container: true` is a permission ("may hold children"), not a claim ("has children") |
+
+**I7** is the most important rule in this document: once a note anchor, a model or a later
+external reconciliation (§10) refers to an ID, renaming the label must not break that
+reference. Opaque IDs (D13) make this nearly automatic — an ID that visibly means nothing
+invites nobody to "correct" it along with the label.
 
 ---
 
@@ -267,8 +283,9 @@ history shows this very JSON to humans.
 
 - **One object per line.** An added edge becomes an added line.
 - **Stable key order**, fixed per object kind.
-- **Omit empty fields.** A missing field means the same as an empty one; the loader applies
-  defaults.
+- **Omit empty fields.** The loader supplies the default for anything missing. For most
+  fields that default is empty; for `direction` it is the default of the edge's `type`
+  (see §3), not `none`.
 - **Nodes in tree order**, children directly beneath their container. Array order carries no
   meaning, but it is free readability.
 - **Arrays rather than maps** in Layer 1 so ordering stays stable. Layer 2 is pure lookup and
@@ -291,7 +308,7 @@ behind them is the first thing that gets lost otherwise.
 | D2 | JSON for persistence, no custom DSL | `JSON.parse` instead of a hand-written parser with error handling, line numbers and a migration path. Also a prerequisite for schema-validated LLM output (structured outputs / tool calls) | Custom DSL as the storage format: more compact, but needs a parser, and the Confluence editor makes broken input possible. YAML: type footguns (`no` → false), indentation-sensitive, an unquoted colon inside `desc` breaks the document |
 | D3 | A textual projection as a view, not as storage — **part of the foundation, not a later addition** | Needs only a generator, no parser. Since D13 it carries a second job: it resolves IDs back to labels, so neither a human reading a diff nor a model answering a question has to dereference opaque handles. Also roughly half the tokens of JSON | Deferring it: tenable only while diagrams stay small enough to hand a model raw JSON, and it leaves edge and `parent` lines unreadable to humans |
 | D4 | Mermaid is not the internal format | Mermaid's edge syntax encodes presentation (`-.->` means dotted), not meaning. There would be no way to express `dependency` or `planned`, and `desc`, `tags` and notes have nowhere to live | Mermaid **as an export** is worthwhile and acceptably lossy — a one-way street to GitHub, Markdown docs and other tools |
-| D5 | Arrow syntax modelled on Mermaid (`->`, `--`, `<->`) | Direction is legible without explanation, for humans and models alike | — |
+| D5 | The **projection's** arrow syntax is modelled on Mermaid: `->` = `direction: to`, `--` = `none`, `<->` = `both` | Direction is legible without explanation, for humans and models alike. This governs the projection (D3) only — storage keeps `type` and `direction` as fields, because an arrow glyph cannot carry the relationship kind (D4) | — |
 | D6 | Shape (`rect`/`ellipse`) is purely visual, in Layer 2 | A deliberate decision against a `type` field. The cost: without `type`, validation against external sources is not possible — consistent with deferring reality reconciliation | `type` with domain roles (`service`, `datastore`, …): makes LLM output more reliable and validation possible. A candidate for later |
 | D7 | Colour carries no semantics | In practice colour almost always means something (red = deprecated). Stored as a hex value, the machine can neither read nor set precisely the most important information | Solution: `tags` in Layer 1 plus a theme mapping tag → appearance |
 | D8 | "Loose connection" is not an edge type | Dashed means "planned", "optional" or "uncertain" in practice — three different things. It belongs in `tags`: one mechanism instead of two | — |
@@ -352,8 +369,8 @@ existing diagram.
 - **Layer 1 / semantics** — what the diagram means. Source of truth.
 - **Layer 2 / presentation** — how it looks. Derivative.
 - **Containment** — nesting of nodes, semantic (not mere visual overlap).
-- **Projection** — a text form generated from Layer 1 for display or for a model.
-  Never written back.
+- **Projection** — a text form generated from Layer 1 for display or for a model. Resolves
+  opaque IDs back to labels and writes edges in the arrow syntax of D5. Never written back.
 - **Orphan** — an entry in Layer 2 with no counterpart in Layer 1. Discarded.
 
 ### Platform vocabulary
@@ -366,14 +383,20 @@ called that. Use the terms to distinguish the two codebases, consistently and on
 |---|---|
 | **app** | Confluence Cloud (Forge). Also the Marketplace term for every listing, including its Data Center variants |
 | **plugin** | Confluence Data Center / Server (plugin framework, Java) |
+| **editor** | the product as a whole, independent of deployment — what this document specifies |
 
-Two practical consequences:
+Neither *app* nor *plugin* covers both at once, so neither may be used generically. For the
+thing itself, across both codebases, write **editor** or use the product name.
+
+Three practical consequences:
 
 - **When searching for documentation**, "Confluence plugin development" leads to Data Center
   and Server material, some of it very old. Search for "Forge app" or "Confluence Cloud app"
   instead. This is the most common early time sink.
 - **In prose covering both platforms**, write "the Confluence app (Cloud)" and "the Confluence
   plugin (Data Center)" so it is always clear which codebase is meant.
+- **When one term has to cover both**, reach for *editor*, not for whichever of the two feels
+  more familiar. That slip is how the distinction erodes.
 
 A single Marketplace listing can carry several deployment types, so both implementations
 should share one product name.

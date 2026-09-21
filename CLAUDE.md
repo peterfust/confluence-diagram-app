@@ -11,10 +11,12 @@ reasoning behind them.
 
 - **app** = Confluence Cloud (Forge)
 - **plugin** = Confluence Data Center / Server (Java plugin framework)
+- **editor** = the product as a whole, independent of deployment
 
-Atlassian renamed "plugin" to "app" in 2018, but both terms are live and denote different
-codebases. In prose covering both, write "the Confluence app (Cloud)" and "the Confluence
-plugin (Data Center)" so it is always clear which one is meant.
+Atlassian renamed "plugin" to "app" around 2018, but both terms are live and denote different
+codebases. Neither covers both at once, so neither may be used generically — when one term
+has to span both, it is "editor". In prose covering both platforms, write "the Confluence app
+(Cloud)" and "the Confluence plugin (Data Center)".
 
 ## When researching Atlassian documentation
 
@@ -33,6 +35,12 @@ most common time sink on this project.
 - **Every editor gesture that means something to the viewer must produce semantics** (§6).
   A correctly drawn diagram that the machine misreads is the worst failure mode, because the
   picture looks right and nobody notices.
+- **IDs are opaque and generated** — `n_4a2f`, never `slugify(label)` (D13). The obvious
+  default is the wrong one here: a label-derived ID is a second copy of the label and drifts
+  at the first rename. The editor mints every ID; never the author, never a model. Never
+  parse an ID.
+- **The textual projection is foundational, not a later add-on** (D3). Since IDs carry no
+  meaning, the projection is what makes Layer 1 readable — it resolves IDs back to labels.
 
 ## Keeping the spec honest
 
