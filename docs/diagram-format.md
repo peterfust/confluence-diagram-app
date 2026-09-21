@@ -185,13 +185,23 @@ page) so the separation is physical and Layer 1 can be indexed on its own.
     "n_c1a": { "x": 860, "y": 190, "w": 180, "h": 62, "shape": "rect" }
   },
   "notes": {
-    "t_2e6": { "x": 880, "y": 330, "w": 190, "h": 72 }
+    "t_2e6": { "x": 20, "y": 140, "w": 190, "h": 72 }
   }
 }
 ```
 
-- **Coordinates are relative to the parent node.** Children then move with their container
-  automatically, and re-parenting requires exactly one conversion.
+- **Coordinates are relative to whatever an entry hangs from** — for a node its `parent`,
+  for a note its `anchor`. One rule, not two: both then move with what they belong to, so
+  re-parenting a node costs exactly one conversion, and the notes anchored to it cost none.
+  A node without a `parent` is relative to the canvas origin.
+  - The origin is always the **top-left corner of the reference box**. For a child node that
+    box encloses it. For a note it does not — a note sits *beside* its anchor, so its
+    coordinates routinely reach past the anchor's own width and height. In the example above
+    the note's `y` of 140 puts it well below its 62-high anchor. That is expected, not a bug.
+  - When a note's `anchor` is an **edge**, the reference point is the edge's midpoint. That
+    point is computed from the endpoints rather than stored, which makes it the one derived
+    reference frame in Layer 2 — and it is what lets a note follow an edge when either
+    endpoint moves.
 - **`shape`** accepts `rect` and `ellipse`. Containers carry no shape — how a container is
   drawn follows from `container: true` in Layer 1. Storing it here too would duplicate the
   information across the layer boundary.
