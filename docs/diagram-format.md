@@ -4,7 +4,7 @@ Concept and decision record for a Confluence diagram plugin.
 Implementation-neutral: applies to Cloud (Forge) and Data Center alike, independent of
 frontend library and storage location.
 
-Last updated: 2026-09-19 · Status: draft, validated by a working prototype
+Last updated: 2026-09-21 · Status: draft, validated by a working prototype
 
 ---
 
@@ -72,26 +72,39 @@ Persistence: JSON. Stored in the indexed page body.
     "updated": "2026-09-18"
   },
   "nodes": [
-    { "id": "frontend", "label": "Frontend", "container": true },
-    { "id": "spa", "label": "React SPA", "parent": "frontend", "desc": "Customer-facing ordering flow in the browser." },
-    { "id": "backend", "label": "Backend", "container": true },
-    { "id": "gateway", "label": "API Gateway", "parent": "backend", "desc": "Terminates TLS, validates tokens, routes to services." },
-    { "id": "order_service", "label": "Order Service", "parent": "backend", "desc": "Accepts orders and orchestrates payment and shipping." },
-    { "id": "postgres", "label": "PostgreSQL", "desc": "Holds orders and line items, single source of truth." },
-    { "id": "payments", "label": "Payment Provider", "desc": "Third-party provider for card and invoice payment.", "tags": ["external"] }
+    { "id": "n_3f1", "label": "Frontend", "container": true },
+    { "id": "n_a27", "label": "React SPA", "parent": "n_3f1", "desc": "Customer-facing ordering flow in the browser." },
+    { "id": "n_5c8", "label": "Backend", "container": true },
+    { "id": "n_b40", "label": "API Gateway", "parent": "n_5c8", "desc": "Terminates TLS, validates tokens, routes to services." },
+    { "id": "n_92d", "label": "Order Service", "parent": "n_5c8", "desc": "Accepts orders and orchestrates payment and shipping." },
+    { "id": "n_6e3", "label": "PostgreSQL", "desc": "Holds orders and line items, single source of truth." },
+    { "id": "n_c1a", "label": "Payment Provider", "desc": "Third-party provider for card and invoice payment.", "tags": ["external"] }
   ],
   "edges": [
-    { "id": "spa_gateway", "source": "spa", "target": "gateway", "type": "flow", "label": "HTTPS" },
-    { "id": "gateway_order_service", "source": "gateway", "target": "order_service", "type": "dependency" },
-    { "id": "order_service_postgres", "source": "order_service", "target": "postgres", "type": "flow", "direction": "both", "label": "reads/writes" },
-    { "id": "order_service_payments", "source": "order_service", "target": "payments", "type": "flow", "label": "initiate payment", "tags": ["planned"] },
-    { "id": "frontend_backend", "source": "frontend", "target": "backend", "type": "association" }
+    { "id": "e_11b", "source": "n_a27", "target": "n_b40", "type": "flow", "label": "HTTPS" },
+    { "id": "e_7d2", "source": "n_b40", "target": "n_92d", "type": "dependency" },
+    { "id": "e_4a9", "source": "n_92d", "target": "n_6e3", "type": "flow", "direction": "both", "label": "reads/writes" },
+    { "id": "e_f30", "source": "n_92d", "target": "n_c1a", "type": "flow", "label": "initiate payment", "tags": ["planned"] },
+    { "id": "e_8c5", "source": "n_3f1", "target": "n_5c8", "type": "association" }
   ],
   "notes": [
-    { "id": "note_1", "anchor": "payments", "text": "Provider contract expires at the end of Q3." }
+    { "id": "t_2e6", "anchor": "n_c1a", "text": "Provider contract expires at the end of Q3." }
   ]
 }
 ```
+
+### ids
+
+IDs are **opaque and generated**, never derived from the label: a short random suffix behind
+a kind prefix — `n_` node, `e_` edge, `t_` note. They are meaningless on purpose. Everything
+a reader needs is in `label` and `desc`, which the author maintains; an ID that also carried
+the name would be a second copy of it and would drift on the first rename (D13).
+
+The kind prefix duplicates what the object's position in the JSON already says, which is
+tolerable because it is the one thing that **cannot** drift — a node never becomes an edge —
+and it makes a broken reference diagnosable at a glance.
+
+Never parse an ID. It is a handle, not a statement.
 
 ### meta
 
@@ -106,7 +119,7 @@ Persistence: JSON. Stored in the indexed page body.
 
 | Field | Required | Meaning |
 |---|---|---|
-| `id` | yes | stable, survives renaming, anchor for all references |
+| `id` | yes | opaque, generated, stable. Survives renaming and anchors all references. See **ids** above |
 | `label` | yes | human-facing caption |
 | `container` | no | permission to hold children. See invariant I2 |
 | `parent` | no | container ID. Absent on root nodes |
@@ -120,7 +133,7 @@ There is deliberately **no** `type` field. The domain role is expressed through 
 
 | Field | Required | Meaning |
 |---|---|---|
-| `id` | yes | stable |
+| `id` | yes | opaque, generated, stable |
 | `source`, `target` | yes | node IDs |
 | `type` | yes | see below |
 | `direction` | no | override. **Store only when it differs from the type's default** |
@@ -143,7 +156,7 @@ specific to a diagram `kind` and should only be added once a `kind` is drawn mor
 
 | Field | Required | Meaning |
 |---|---|---|
-| `id` | yes | stable |
+| `id` | yes | opaque, generated, stable |
 | `anchor` | yes | ID of **exactly one** node or **one** edge |
 | `text` | yes | content |
 
@@ -160,16 +173,16 @@ page) so the separation is physical and Layer 1 can be indexed on its own.
 {
   "format": "diagram-layout/1",
   "nodes": {
-    "frontend":      { "x": 70,  "y": 90,  "w": 270, "h": 180 },
-    "spa":           { "x": 60,  "y": 75,  "w": 150, "h": 62, "shape": "rect" },
-    "backend":       { "x": 440, "y": 70,  "w": 300, "h": 300 },
-    "gateway":       { "x": 75,  "y": 60,  "w": 150, "h": 62, "shape": "rect" },
-    "order_service": { "x": 75,  "y": 190, "w": 150, "h": 62, "shape": "rect" },
-    "postgres":      { "x": 480, "y": 470, "w": 170, "h": 84, "shape": "ellipse" },
-    "payments":      { "x": 860, "y": 190, "w": 180, "h": 62, "shape": "rect" }
+    "n_3f1": { "x": 70,  "y": 90,  "w": 270, "h": 180 },
+    "n_a27": { "x": 60,  "y": 75,  "w": 150, "h": 62, "shape": "rect" },
+    "n_5c8": { "x": 440, "y": 70,  "w": 300, "h": 300 },
+    "n_b40": { "x": 75,  "y": 60,  "w": 150, "h": 62, "shape": "rect" },
+    "n_92d": { "x": 75,  "y": 190, "w": 150, "h": 62, "shape": "rect" },
+    "n_6e3": { "x": 480, "y": 470, "w": 170, "h": 84, "shape": "ellipse" },
+    "n_c1a": { "x": 860, "y": 190, "w": 180, "h": 62, "shape": "rect" }
   },
   "notes": {
-    "note_1": { "x": 880, "y": 330, "w": 190, "h": 72 }
+    "t_2e6": { "x": 880, "y": 330, "w": 190, "h": 72 }
   }
 }
 ```
@@ -192,7 +205,7 @@ The validator checks these on every change.
 
 | | Rule | Consequence if violated |
 |---|---|---|
-| **I1** | Every `id` is unique within the diagram (nodes, edges and notes share one namespace) | error |
+| **I1** | Every `id` is unique within the diagram (nodes, edges and notes share one namespace) | error; repaired on load, see below |
 | **I2** | Anything referenced as `parent` carries `container: true` | error; the editor repairs it automatically |
 | **I3** | Every edge's `source` and `target` exist | error |
 | **I4** | Every note's `anchor` exists | note is deleted along with its anchor |
@@ -201,8 +214,16 @@ The validator checks these on every change.
 | **I7** | IDs stay stable when the label is renamed | — |
 | **I8** | `container: true` is a permission ("may hold children"), not a claim ("has children") | — |
 
-I7 is the most important one: once a model or an external reconciliation refers to
-`order_service`, renaming the label must not break that reference.
+**I1** holds by construction, because the editor is the only thing that mints IDs (§6) and
+checks each new one against the whole namespace. The validator still enforces it, but against
+hand-edited JSON and bad merges rather than against normal use. A duplicate found on load is
+**repaired, not rejected** — the second occurrence is re-minted and its references follow.
+A page that refuses to open because of one duplicate ID is a dead page.
+
+**I7** is the most important rule here: once a note anchor, a model or a later external
+reconciliation (§10) refers to an ID, renaming the label must not break that reference.
+Opaque IDs (D13) make this nearly automatic — an ID that visibly means nothing invites nobody
+to "correct" it along with the label.
 
 ---
 
@@ -229,6 +250,10 @@ In practice:
 - **Ask for `desc` up front**, rather than hiding it in a sub-dialog. Without a `type` field,
   `desc` is the only field carrying the domain role. If it stays empty, Layer 1 is a list of
   names.
+- **The editor mints every ID.** Never the author, never a model. A model proposing a change
+  supplies label and relationship; identity is assigned here (§9.5). Duplicating a container
+  re-mints the whole subtree **and** rewrites the edges internal to it — that is where
+  implementations usually break.
 
 This is deliberately more restrictive than draw.io — and that is exactly the difference:
 draw.io lets you draw anything and therefore knows nothing.
@@ -264,7 +289,7 @@ behind them is the first thing that gets lost otherwise.
 |---|---|---|---|
 | D1 | Positions are stored; no auto-layout | The human draws, so positions are authored. Stable incremental auto-layout is the hardest problem in this space and simply does not arise this way | The Mermaid model: layout is recomputed on every render, so one new node rearranges everything |
 | D2 | JSON for persistence, no custom DSL | `JSON.parse` instead of a hand-written parser with error handling, line numbers and a migration path. Also a prerequisite for schema-validated LLM output (structured outputs / tool calls) | Custom DSL as the storage format: more compact, but needs a parser, and the Confluence editor makes broken input possible. YAML: type footguns (`no` → false), indentation-sensitive, an unquoted colon inside `desc` breaks the document |
-| D3 | A textual projection later as a view, not as storage | Needs only a generator, no parser. Roughly half the tokens of JSON — which matters only once you ask "summarise every diagram in this space" | Left out entirely for the prototype: handing the model raw JSON is good enough |
+| D3 | A textual projection as a view, not as storage — **part of the foundation, not a later addition** | Needs only a generator, no parser. Since D13 it carries a second job: it resolves IDs back to labels, so neither a human reading a diff nor a model answering a question has to dereference opaque handles. Also roughly half the tokens of JSON | Deferring it: tenable only while diagrams stay small enough to hand a model raw JSON, and it leaves edge and `parent` lines unreadable to humans |
 | D4 | Mermaid is not the internal format | Mermaid's edge syntax encodes presentation (`-.->` means dotted), not meaning. There would be no way to express `dependency` or `planned`, and `desc`, `tags` and notes have nowhere to live | Mermaid **as an export** is worthwhile and acceptably lossy — a one-way street to GitHub, Markdown docs and other tools |
 | D5 | Arrow syntax modelled on Mermaid (`->`, `--`, `<->`) | Direction is legible without explanation, for humans and models alike | — |
 | D6 | Shape (`rect`/`ellipse`) is purely visual, in Layer 2 | A deliberate decision against a `type` field. The cost: without `type`, validation against external sources is not possible — consistent with deferring reality reconciliation | `type` with domain roles (`service`, `datastore`, …): makes LLM output more reliable and validation possible. A candidate for later |
@@ -274,6 +299,7 @@ behind them is the first thing that gets lost otherwise.
 | D10 | No `contains` array in addition to `parent` | Two fields for the same fact can drift apart, and a reader then cannot tell which one is right | Viable as a **replacement** for `parent`, but brings cycle checking and constant parent lookups in the renderer |
 | D11 | `container: true` rather than inferring from existing children | Otherwise an empty container is semantically indistinguishable from an ordinary node | — |
 | D12 | External reconciliation (a `ref` field) deferred | Deliberate reduction for the first pass | The strongest candidate for later, see section 10 |
+| D13 | IDs are opaque and generated (`n_4a2f`), never derived from the label | A readable ID is a second copy of the label and drifts at the first rename — precisely what D10 rejects. It also makes I1 hold by construction, and removes the temptation to read meaning out of an ID, which would answer D6 through the back door. And it strengthens I7: an ID that visibly means nothing does not get "corrected" along with the label | Readable slugs (`order_service`): better raw-JSON diffs, one less dereferencing step for a model. But they need collision handling at mint time across a shared namespace, and both benefits return through the projection (D3) — which is why that moved forward |
 
 **Rule of thumb following from D6 and D12:** any optional field the author does not fill in
 as a side effect of drawing will stay empty in practice. A field that is usually empty is
