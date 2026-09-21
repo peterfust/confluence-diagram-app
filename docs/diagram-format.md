@@ -64,7 +64,8 @@ Persistence: JSON. Stored in the indexed page body.
 
 ```json
 {
-  "format": "diagram/1",
+  "format": "diagram",
+  "version": 1,
   "meta": {
     "title": "Order fulfilment",
     "kind": "architecture",
@@ -92,6 +93,29 @@ Persistence: JSON. Stored in the indexed page body.
   ]
 }
 ```
+
+### format and version
+
+| Field | Required | Meaning |
+|---|---|---|
+| `format` | yes | `diagram` for Layer 1, `diagram-layout` for Layer 2. Constant across all versions |
+| `version` | yes | integer. A missing value means 1 |
+
+Two fields rather than one string (`diagram/1`), because they answer two independent
+questions. `format` then stays constant forever, which makes it a usable search anchor for
+finding diagram pages in the indexed page body — a version-tagged string would fragment with
+every release.
+
+**`version` counts breaking changes only.** Additive change — a new optional field such as
+`ref` (D12) or typed nodes (D6) — does not bump it, because the round-trip rule in §7 already
+covers it: a reader that preserves what it does not understand needs no signal that something
+was added. A minor version would be a second mechanism for a solved problem.
+
+A `version` higher than the reader knows means the rules themselves changed. Show the diagram
+read-only and say so. Never edit a document written under rules you do not have.
+
+**The two layers version independently.** They are stored separately and change separately —
+a new `shape` value touches Layer 2 alone.
 
 ### ids
 
@@ -174,7 +198,8 @@ page) so the separation is physical and Layer 1 can be indexed on its own.
 
 ```json
 {
-  "format": "diagram-layout/1",
+  "format": "diagram-layout",
+  "version": 1,
   "nodes": {
     "n_3f1": { "x": 70,  "y": 90,  "w": 270, "h": 180 },
     "n_a27": { "x": 60,  "y": 75,  "w": 150, "h": 62, "shape": "rect" },
@@ -300,6 +325,11 @@ history shows this very JSON to humans.
   meaning, but it is free readability.
 - **Arrays rather than maps** in Layer 1 so ordering stays stable. Layer 2 is pure lookup and
   may be a map.
+- **Preserve what you do not understand.** Fields the loader does not know are kept on the
+  object and written back unchanged. Without this, an older reader silently strips a newer
+  document on the next save and nobody notices — the same failure mode §6 describes for
+  diagrams, one level down. With it, additive format change needs no version bump at all
+  (§3).
 
 Known side effect: re-parenting a node changes `parent` in Layer 1 **and** the coordinate
 line in Layer 2. Unavoidable, but worth knowing before someone asks why a pure regrouping
@@ -327,6 +357,7 @@ behind them is the first thing that gets lost otherwise.
 | D11 | `container: true` rather than inferring from existing children | Otherwise an empty container is semantically indistinguishable from an ordinary node | — |
 | D12 | External reconciliation (a `ref` field) deferred | Deliberate reduction for the first pass | The strongest candidate for later, see section 10 |
 | D13 | IDs are opaque and generated (`n_4a2f`), never derived from the label | A readable ID is a second copy of the label and drifts at the first rename — precisely what D10 rejects. It also makes I1 hold by construction, and removes the temptation to read meaning out of an ID, which would answer D6 through the back door. And it strengthens I7: an ID that visibly means nothing does not get "corrected" along with the label | Readable slugs (`order_service`): better raw-JSON diffs, one less dereferencing step for a model. But they need collision handling at mint time across a shared namespace, and both benefits return through the projection (D3) — which is why that moved forward |
+| D14 | `format` and `version` are separate fields; `version` is one integer that counts breaking changes only | Two independent questions deserve two fields, `version` becomes comparable without parsing, and a constant `format` stays a usable search anchor. Additive change is absorbed by the round-trip rule (§7) instead of by a version number, so no minor version is needed | A combined `"diagram/1"`: atomic, cannot half-exist under hand editing — but every reader has to split it first, and the readers are not only this editor (indexing, the reconciliation of §10). Major/minor: a second mechanism for what preserving unknown fields already solves |
 
 **Rule of thumb following from D6 and D12:** any optional field the author does not fill in
 as a side effect of drawing will stay empty in practice. A field that is usually empty is
@@ -352,6 +383,13 @@ worse than no field at all, because it cannot be trusted downstream.
    representations and ask the same questions ("what sits inside the backend", "what is
    planned", "what does X depend on"). Especially the questions that target `tags` and edge
    type.
+7. **How far back the editor keeps reading** — D14 makes writing cheap, since there is
+   effectively one writer. Reading is where it accumulates: every past `version` stays
+   supported until someone decides otherwise, and by the third breaking change that is a
+   real cost. Decide the rule before the first bump, not after. Note the two cases that
+   produce an old reader despite a single writer: a Data Center admin downgrading the plugin
+   after a bad release, and the outside readers this format exists for — indexing, and the
+   reconciliation jobs of §10, which are not this editor and do not update with it.
 
 ---
 
